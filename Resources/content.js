@@ -1,0 +1,300 @@
+let _debug = false;
+let _speedup = false;
+let _pushAdsToEnd = false;
+let _skipTo = 0;
+let _isPaused = false;
+let _autoplay = false;
+let _lastUrl = null;
+let _playerVisible = true; // Default true since we don't store it
+
+// Load settings
+chrome.storage.sync.get(['isPaused', 'autoplay'], function (result) {
+    _isPaused = result.isPaused || false;
+    _autoplay = result.autoplay || false;
+    
+    if (_debug) console.log('Settings loaded:', result);
+    
+    if (!_isPaused) {
+        startObserver();
+        warmUp(); // Run initial cleanup
+    }
+    updateEmbedVisibility();
+});
+
+function updateEmbedVisibility() {
+    const customEmbed = document.getElementById('custom-embed');
+    const ytdPlayer = document.getElementById('ytd-player');
+    if (customEmbed && ytdPlayer) {
+        // Show our iframe, hide default player
+        customEmbed.style.display = _playerVisible ? 'block' : 'none';
+        if (ytdPlayer.children[0]) {
+            ytdPlayer.children[0].style.display = _playerVisible ? 'none' : 'block';
+        }
+    }
+}
+
+function replaceYouTubePlayer() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoId = urlParams.get('v');
+    
+    if (videoId && !_isPaused) {
+        const embedCode = `
+          <iframe
+            id="custom-embed"
+            src="https://www.youtube.com/embed/${videoId}?${_autoplay ? 'autoplay=1' : ''}"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        `;
+        
+        const ytdPlayer = document.getElementById('ytd-player');
+        if (ytdPlayer) {
+            const ytdChild = ytdPlayer.children[0];
+            if (ytdChild) ytdChild.style.display = 'none';
+            
+            // If there's already a second child (our old custom embed), remove it
+            if (ytdPlayer.children.length > 1) {
+                const secondChild = ytdPlayer.children[1];
+                ytdPlayer.removeChild(secondChild);
+            }
+            
+            // Append our iframe
+            const embedDiv = document.createElement('div');
+            embedDiv.innerHTML = embedCode;
+            ytdPlayer.appendChild(embedDiv);
+        }
+    } else {
+        const embedVid = document.getElementById('movie_player');
+        if (embedVid) {
+            const embedVideoElement = embedVid.querySelector('video');
+            if (embedVideoElement && !embedVideoElement.paused) {
+                embedVideoElement.pause();
+            }
+        }
+    }
+}
+
+function pauseDefaultPlayer() {
+    // Don’t pause anything if the extension is paused or if our embed is hidden
+    if (_isPaused || !_playerVisible) return;
+    
+    const videoElement = document.querySelector('.video-stream.html5-main-video');
+    if (videoElement && !videoElement.paused) {
+        videoElement.pause();
+    }
+}
+
+// THIS is the critical fix: reference the SAME container (#ytd-player) for sizing
+function adjustSize() {
+    if (_isPaused) return;
+    const ytdPlayer = document.getElementById('ytd-player');
+    const customEmbed = document.getElementById('custom-embed');
+    
+    if (ytdPlayer && customEmbed) {
+        // Option A: Using iframe attributes
+        customEmbed.setAttribute('width', ytdPlayer.offsetWidth);
+        customEmbed.setAttribute('height', ytdPlayer.offsetHeight);
+
+        // Option B (alternative): Using CSS
+        // customEmbed.style.width = ytdPlayer.offsetWidth + 'px';
+        // customEmbed.style.height = ytdPlayer.offsetHeight + 'px';
+    }
+}
+
+function checkUrlChange() {
+    if (_isPaused) return;
+    const currentUrl = window.location.href;
+    if (currentUrl !== _lastUrl || _lastUrl === null) {
+        _lastUrl = currentUrl;
+        replaceYouTubePlayer();
+    }
+}
+
+setInterval(checkUrlChange, 1000);
+setInterval(pauseDefaultPlayer, 1000);
+setInterval(adjustSize, 1000);
+
+// -------------- Ad Removal + Warmup --------------
+function removeAds() {
+    const adSelectors = [
+        'ytd-ad-slot-renderer',
+        'ytd-banner-promo-renderer',
+        'ytd-player-legacy-desktop-watch-ads-renderer',
+        'ytd-action-companion-ad-renderer'
+    ];
+    
+    for (const selector of adSelectors) {
+        const adElements = document.querySelectorAll(selector);
+        if (_debug) console.log('Found', adElements.length, 'ads matching', selector);
+        
+        adElements.forEach(el => {
+            // Find the specific parent ytd-rich-item-renderer within ytd-rich-grid-renderer
+            const richParent = el.closest('ytd-rich-item-renderer.style-scope.ytd-rich-grid-renderer');
+            if (richParent) {
+                if (_debug) console.log('Removing parent ytd-rich-item-renderer:', richParent);
+                richParent.remove();
+                return;
+            }
+            
+            // Find the parent ytd-reel-video-renderer
+            const reelParent = el.closest('ytd-reel-video-renderer');
+            if (reelParent) {
+                if (_debug) console.log('Removing parent ytd-reel-video-renderer:', reelParent);
+                reelParent.style.display = 'none';
+                return;
+            }
+            
+            // If no specific parent found, remove the ad element itself
+            if (_debug) console.log('Removing ad:', el);
+            el.remove();
+        });
+    }
+
+    // Special case for top-row home ad
+    const topAd = document.querySelector('ytd-ad-slot-renderer');
+    if (topAd) {
+        const topAdParent = topAd.closest('ytd-reel-video-renderer') || 
+                            topAd.closest('ytd-rich-item-renderer.style-scope.ytd-rich-grid-renderer');
+        if (topAdParent) {
+            if (_debug) console.log('Removing top-row ad parent:', topAdParent);
+            topAdParent.remove();
+        } else {
+            if (_debug) console.log('Removing top-row ad directly:', topAd);
+            topAd.remove();
+        }
+    }
+
+    // Remove Engagement Panel Ads
+    const adsEngagementPanel = document.querySelector('ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"]');
+    if (adsEngagementPanel) {
+        if (_debug) console.log('Removing ytd-engagement-panel-section-list-renderer with target-id="engagement-panel-ads":', adsEngagementPanel);
+        adsEngagementPanel.remove();
+    }
+}
+
+function removePromoPopups() {
+    const popups = document.querySelectorAll('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer');
+    if (_debug) console.log('Found', popups.length, 'promo popups');
+    popups.forEach(popup => {
+        const dismissButton = popup.querySelector('#dismiss-button, .dismiss-button');
+        if (dismissButton) {
+            if (_debug) console.log('Removing popup:', popup);
+            dismissButton.click();
+        } else {
+            if (_debug) console.log('No dismiss button found in popup:', popup);
+        }
+    });
+}
+
+function warmUp() {
+    if (_debug) console.log('Running warm-up functions...');
+    removeAds();
+    removePromoPopups();
+}
+
+// -------------- Mutation Observer Logic --------------
+function handleMutations(mutationsList, observer) {
+    if (_isPaused) {
+        if (_debug) console.log('Observer is paused. Not handling mutations.');
+        return;
+    }
+    
+    for (const mutation of mutationsList) {
+        for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1) { // element node
+                if (node.matches('[class*="ad-slot-renderer"], [class*="banner-promo-renderer"]')) removeAds();
+                else if (node.matches('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer')) removePromoPopups();
+            }
+        }
+    }
+}
+
+function startObserver() {
+    if (_debug) console.log('Starting MutationObserver...');
+    const observer = new MutationObserver(handleMutations);
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// -------------- Message Handling --------------
+chrome.runtime.onMessage.addListener(function (request) {
+    if (_debug) console.log('Received message:', request);
+    
+    if (request.message === 'updateObserver') {
+        window.location.reload();
+    } else if (request.message === 'updateAutoplay') {
+        _autoplay = request.autoplay;
+        replaceYouTubePlayer();
+    } else if (request.message === 'toggleEmbed') {
+        _playerVisible = request.visible;
+        updateEmbedVisibility();
+    }
+});
+
+// -------------- Keyboard Shortcut --------------
+document.addEventListener('keydown', function (event) {
+    // Shortcut: Ctrl + B
+    if (event.ctrlKey && event.code === 'KeyB') {
+        _playerVisible = !_playerVisible; // Toggle visibility
+        updateEmbedVisibility();
+        if (_debug) console.log(`Player visibility toggled: ${_playerVisible}`);
+    }
+});
+
+// -------------- Extra: “Next” Button by the Title --------------
+function addNextButtonNextToTitle() {
+    const titleElement = document.querySelector("#title h1.style-scope.ytd-watch-metadata");
+    
+    if (!titleElement) {
+        if (_debug) console.log("Title element not found!");
+        return;
+    }
+
+    const existingButton = document.querySelector("#custom-next-button");
+    if (existingButton) {
+        if (_debug) console.log("Next button already exists!");
+        return;
+    }
+
+    // Create new "Next" button
+    const nextButton = document.createElement('button');
+    nextButton.id = "custom-next-button";
+    nextButton.textContent = "Next";
+    nextButton.style.marginLeft = "10px";
+    nextButton.style.cursor = "pointer";
+    nextButton.style.padding = "5px 10px";
+    nextButton.style.border = "none";
+    nextButton.style.backgroundColor = "#cc0000";
+    nextButton.style.color = "#fff";
+    nextButton.style.borderRadius = "4px";
+    nextButton.style.fontSize = "14px";
+    nextButton.style.alignSelf = "center";
+
+    // Wire the new button to the original YouTube "Next" control
+    const originalNextButton = document.querySelector('.ytp-next-button.ytp-button');
+    if (originalNextButton) {
+        nextButton.addEventListener('click', () => {
+            originalNextButton.click();
+        });
+    } else {
+        if (_debug) console.log("Original 'Next' button not found!");
+    }
+
+    // Insert the button next to the title
+    const parentContainer = titleElement.parentNode;
+    if (parentContainer) {
+        parentContainer.style.display = "flex";
+        parentContainer.style.alignItems = "center";
+        parentContainer.insertBefore(nextButton, titleElement.nextSibling);
+    } else {
+        if (_debug) console.log("Title's parent container not found!");
+    }
+}
+
+// Repeatedly attempt to add the "Next" button until it succeeds
+const intervalId = setInterval(() => {
+    addNextButtonNextToTitle();
+    if (document.querySelector("#custom-next-button")) {
+        clearInterval(intervalId);
+    }
+}, 1000);

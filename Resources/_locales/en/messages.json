@@ -1,0 +1,10 @@
+{
+    "extension_name": {
+        "message": "FocusTube: Your Enhanced YouTube Experience",
+        "description": "The display name for the extension."
+    },
+    "extension_description": {
+        "message": "Enhance and streamline your YouTube usage by seamlessly skipping ads, toggling custom embeds, and customizing your viewing experience with advanced controls.",
+        "description": "Description of what the extension does."
+    }
+}

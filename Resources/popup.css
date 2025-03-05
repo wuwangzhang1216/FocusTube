@@ -1,0 +1,170 @@
+:root {
+    color-scheme: light dark;
+
+    /* Background gradient and refined colors */
+    --background-gradient-light: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+    --background-gradient-dark: linear-gradient(180deg, #232323 0%, #1e1e1e 100%);
+    --foreground-color: #444; 
+    --border-color: #ccc;
+    --popup-background: #fff;
+    --primary-color: #cc0000; /* YouTube Red */
+    --secondary-color: #888;  /* Neutral gray */
+    --header-bg: #cc0000;
+
+    /* Font settings */
+    --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-family);
+    color: var(--foreground-color);
+    /* Use a light or dark gradient based on system preference */
+    background: var(--background-gradient-light);
+    min-width: 240px;
+    min-height: 280px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: var(--background-gradient-dark);
+        color: #ddd;
+    }
+}
+
+/* Popup container replaces .card */
+.popup-container {
+    background: var(--popup-background);
+    border-radius: 8px;
+    width: 240px;
+    padding: 10px 14px 14px;
+    margin: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+    .popup-container {
+        background: #2a2a2a;
+        color: #eee;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+}
+
+/* New header bar, reminiscent of a YouTube top bar */
+.header-bar {
+    background-color: var(--header-bg);
+    color: #fff;
+    padding: 8px;
+    border-radius: 6px 6px 0 0;
+    margin-bottom: 10px;
+    text-align: center;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+/* Extension info */
+#extension-info {
+    margin: 0 auto;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+#extension-info img {
+    width: 54px;
+    height: 54px;
+    border-radius: 8px;
+}
+
+#extension-info h1 {
+    margin-top: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+}
+
+/* Horizontal line */
+hr.full-width {
+    width: 100%;
+    border: none;
+    border-top: 1px solid var(--border-color);
+    opacity: 0.5;
+    margin: 12px 0;
+}
+
+/* Buttons */
+.primary-btn, .secondary-btn {
+    display: block;
+    width: 100%;
+    margin: 6px 0;
+    padding: 10px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.primary-btn {
+    background-color: var(--primary-color);
+}
+
+.primary-btn:hover {
+    background-color: #b80000;
+    transform: scale(0.98);
+}
+
+.secondary-btn {
+    background-color: var(--secondary-color);
+}
+
+.secondary-btn:hover {
+    background-color: #505050;
+    transform: scale(0.98);
+}
+
+.section {
+    margin: 14px 0;
+}
+
+/* Checkbox */
+.checkbox-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.checkbox-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary-color);
+}
+
+.checkbox-container span {
+    user-select: none;
+    font-weight: 500;
+}
+
+.author-section {
+    margin-top: 12px;
+    font-size: 12px;
+    text-align: center;
+}
+
+.author-section a {
+    color: var(--primary-color); /* Use the YouTube Red */
+    text-decoration: none;
+}
+
+.author-section a:hover {
+    text-decoration: underline;
+}
