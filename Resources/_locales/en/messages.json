@@ -1,10 +1,10 @@
 {
     "extension_name": {
         "message": "FocusTube: Your Enhanced YouTube Experience",
-        "description": "The display name for the extension."
+        "description": "FocusTube is a lightweight, efficient browser extension designed to enhance your YouTube viewing experience by automatically skipping intrusive video ads. Stay focused, save valuable time, and enjoy uninterrupted content seamlessly."
     },
     "extension_description": {
         "message": "Enhance and streamline your YouTube usage by seamlessly skipping ads, toggling custom embeds, and customizing your viewing experience with advanced controls.",
-        "description": "Description of what the extension does."
+        "description": "Ad-Free Viewing: Automatically skips video ads without interruptions. Privacy-Focused: No tracking or user data collection. Easy to Use: Activate once, and FocusTube does the rest. Compatible: Works smoothly with the latest versions of popular browsers. Enjoy distraction-free YouTube videos—install FocusTube and reclaim your viewing experience "
     }
 }
