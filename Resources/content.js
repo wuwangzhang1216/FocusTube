@@ -11,95 +11,95 @@ let _playerVisible = true; // Default true since we don't store it
 chrome.storage.sync.get(['isPaused', 'autoplay'], function (result) {
     _isPaused = result.isPaused || false;
     _autoplay = result.autoplay || false;
-    
+
     if (_debug) console.log('Settings loaded:', result);
-    
+
     if (!_isPaused) {
         startObserver();
         warmUp(); // Run initial cleanup
     }
-    updateEmbedVisibility();
+    updatePlayerState();
 });
 
-function updateEmbedVisibility() {
-    const customEmbed = document.getElementById('custom-embed');
-    const ytdPlayer = document.getElementById('ytd-player');
-    if (customEmbed && ytdPlayer) {
-        // Show our iframe, hide default player
-        customEmbed.style.display = _playerVisible ? 'block' : 'none';
-        if (ytdPlayer.children[0]) {
-            ytdPlayer.children[0].style.display = _playerVisible ? 'none' : 'block';
-        }
-    }
+function updatePlayerState() {
+    // No longer using custom embed, just handle ad skipping
+    if (_debug) console.log('Player state updated, ad blocking:', !_isPaused);
 }
 
-function replaceYouTubePlayer() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const videoId = urlParams.get('v');
-    
-    if (videoId && !_isPaused) {
-        const embedCode = `
-          <iframe
-            id="custom-embed"
-            src="https://www.youtube.com/embed/${videoId}?${_autoplay ? 'autoplay=1' : ''}"
-            frameborder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowfullscreen
-          ></iframe>
-        `;
-        
-        const ytdPlayer = document.getElementById('ytd-player');
-        if (ytdPlayer) {
-            const ytdChild = ytdPlayer.children[0];
-            if (ytdChild) ytdChild.style.display = 'none';
-            
-            // If there's already a second child (our old custom embed), remove it
-            if (ytdPlayer.children.length > 1) {
-                const secondChild = ytdPlayer.children[1];
-                ytdPlayer.removeChild(secondChild);
-            }
-            
-            // Append our iframe
-            const embedDiv = document.createElement('div');
-            embedDiv.innerHTML = embedCode;
-            ytdPlayer.appendChild(embedDiv);
-        }
-    } else {
-        const embedVid = document.getElementById('movie_player');
-        if (embedVid) {
-            const embedVideoElement = embedVid.querySelector('video');
-            if (embedVideoElement && !embedVideoElement.paused) {
-                embedVideoElement.pause();
-            }
-        }
-    }
-}
-
-function pauseDefaultPlayer() {
-    // Don’t pause anything if the extension is paused or if our embed is hidden
-    if (_isPaused || !_playerVisible) return;
-    
-    const videoElement = document.querySelector('.video-stream.html5-main-video');
-    if (videoElement && !videoElement.paused) {
-        videoElement.pause();
-    }
-}
-
-// THIS is the critical fix: reference the SAME container (#ytd-player) for sizing
-function adjustSize() {
+function skipVideoAds() {
     if (_isPaused) return;
-    const ytdPlayer = document.getElementById('ytd-player');
-    const customEmbed = document.getElementById('custom-embed');
-    
-    if (ytdPlayer && customEmbed) {
-        // Option A: Using iframe attributes
-        customEmbed.setAttribute('width', ytdPlayer.offsetWidth);
-        customEmbed.setAttribute('height', ytdPlayer.offsetHeight);
 
-        // Option B (alternative): Using CSS
-        // customEmbed.style.width = ytdPlayer.offsetWidth + 'px';
-        // customEmbed.style.height = ytdPlayer.offsetHeight + 'px';
+    // Skip video ads using YouTube's native player
+    const video = document.querySelector('video.video-stream');
+    const skipButton = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
+    const adOverlay = document.querySelector('.ytp-ad-overlay-close-button');
+
+    // Click skip button if available
+    if (skipButton) {
+        skipButton.click();
+        if (_debug) console.log('Clicked skip button');
     }
+
+    // Close overlay ads
+    if (adOverlay) {
+        adOverlay.click();
+        if (_debug) console.log('Closed overlay ad');
+    }
+
+    // Check if ad is playing and speed it up
+    const adContainer = document.querySelector('.ad-showing, .ad-interrupting');
+    const adBadge = document.querySelector('.ytp-ad-badge, .ytp-ad-player-overlay');
+
+    if ((adContainer || adBadge) && video) {
+        // Mute and speed up ad
+        video.muted = true;
+        video.playbackRate = 16; // Maximum speed
+
+        // Try to skip to end
+        if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
+            video.currentTime = video.duration - 0.1;
+            if (_debug) console.log('Skipped ad to end');
+        }
+    }
+}
+
+function handleVideoAds() {
+    if (_isPaused) return;
+
+    // Handle pre-roll and mid-roll ads
+    const adBadge = document.querySelector('.ytp-ad-badge');
+    const adText = document.querySelector('.ytp-ad-text');
+    const adPreview = document.querySelector('.ytp-ad-preview-container');
+    const adPlayer = document.querySelector('.ytp-ad-player-overlay');
+
+    if (adBadge || adText || adPreview || adPlayer) {
+        skipVideoAds();
+    }
+}
+
+function removeVideoAdElements() {
+    if (_isPaused) return;
+
+    // Remove ad containers
+    const adContainers = [
+        '.ytp-ad-module',
+        '.ytp-ad-player-overlay',
+        '.ytp-ad-image-overlay',
+        '.video-ads',
+        'ytd-promoted-sparkles-web-renderer',
+        'ytd-companion-slot-renderer',
+        'ytd-merch-shelf-renderer',
+        '.ytp-ad-overlay-container',
+        '.ytp-ad-text-overlay'
+    ];
+
+    adContainers.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+            el.style.display = 'none';
+            if (_debug) console.log('Hidden ad container:', selector);
+        });
+    });
 }
 
 function checkUrlChange() {
@@ -107,13 +107,18 @@ function checkUrlChange() {
     const currentUrl = window.location.href;
     if (currentUrl !== _lastUrl || _lastUrl === null) {
         _lastUrl = currentUrl;
-        replaceYouTubePlayer();
+        // Re-run ad removal on page change
+        setTimeout(() => {
+            warmUp();
+            skipVideoAds();
+        }, 1000);
     }
 }
 
 setInterval(checkUrlChange, 1000);
-setInterval(pauseDefaultPlayer, 1000);
-setInterval(adjustSize, 1000);
+setInterval(handleVideoAds, 500);
+setInterval(removeVideoAdElements, 2000);
+setInterval(skipVideoAds, 500);
 
 // -------------- Ad Removal + Warmup --------------
 function removeAds() {
@@ -121,13 +126,16 @@ function removeAds() {
         'ytd-ad-slot-renderer',
         'ytd-banner-promo-renderer',
         'ytd-player-legacy-desktop-watch-ads-renderer',
-        'ytd-action-companion-ad-renderer'
+        'ytd-action-companion-ad-renderer',
+        'ytd-in-feed-ad-layout-renderer',
+        'ytd-promoted-sparkles-text-search-renderer',
+        'ytd-rich-item-renderer:has(ytd-display-ad-renderer)'
     ];
-    
+
     for (const selector of adSelectors) {
         const adElements = document.querySelectorAll(selector);
         if (_debug) console.log('Found', adElements.length, 'ads matching', selector);
-        
+
         adElements.forEach(el => {
             // Find the specific parent ytd-rich-item-renderer within ytd-rich-grid-renderer
             const richParent = el.closest('ytd-rich-item-renderer.style-scope.ytd-rich-grid-renderer');
@@ -136,7 +144,7 @@ function removeAds() {
                 richParent.remove();
                 return;
             }
-            
+
             // Find the parent ytd-reel-video-renderer
             const reelParent = el.closest('ytd-reel-video-renderer');
             if (reelParent) {
@@ -144,7 +152,7 @@ function removeAds() {
                 reelParent.style.display = 'none';
                 return;
             }
-            
+
             // If no specific parent found, remove the ad element itself
             if (_debug) console.log('Removing ad:', el);
             el.remove();
@@ -154,7 +162,7 @@ function removeAds() {
     // Special case for top-row home ad
     const topAd = document.querySelector('ytd-ad-slot-renderer');
     if (topAd) {
-        const topAdParent = topAd.closest('ytd-reel-video-renderer') || 
+        const topAdParent = topAd.closest('ytd-reel-video-renderer') ||
                             topAd.closest('ytd-rich-item-renderer.style-scope.ytd-rich-grid-renderer');
         if (topAdParent) {
             if (_debug) console.log('Removing top-row ad parent:', topAdParent);
@@ -174,15 +182,17 @@ function removeAds() {
 }
 
 function removePromoPopups() {
-    const popups = document.querySelectorAll('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer');
+    const popups = document.querySelectorAll('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer, tp-yt-paper-dialog');
     if (_debug) console.log('Found', popups.length, 'promo popups');
     popups.forEach(popup => {
-        const dismissButton = popup.querySelector('#dismiss-button, .dismiss-button');
+        const dismissButton = popup.querySelector('#dismiss-button, .dismiss-button, .yt-spec-button-shape-next--mono');
         if (dismissButton) {
             if (_debug) console.log('Removing popup:', popup);
             dismissButton.click();
         } else {
-            if (_debug) console.log('No dismiss button found in popup:', popup);
+            // Force close popup if no button found
+            popup.style.display = 'none';
+            if (_debug) console.log('Force hidden popup:', popup);
         }
     });
 }
@@ -191,6 +201,7 @@ function warmUp() {
     if (_debug) console.log('Running warm-up functions...');
     removeAds();
     removePromoPopups();
+    removeVideoAdElements();
 }
 
 // -------------- Mutation Observer Logic --------------
@@ -199,12 +210,17 @@ function handleMutations(mutationsList, observer) {
         if (_debug) console.log('Observer is paused. Not handling mutations.');
         return;
     }
-    
+
     for (const mutation of mutationsList) {
         for (const node of mutation.addedNodes) {
             if (node.nodeType === 1) { // element node
-                if (node.matches('[class*="ad-slot-renderer"], [class*="banner-promo-renderer"]')) removeAds();
-                else if (node.matches('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer')) removePromoPopups();
+                if (node.matches && node.matches('[class*="ad-slot-renderer"], [class*="banner-promo-renderer"], [class*="ad-layout"]')) {
+                    removeAds();
+                } else if (node.matches && node.matches('.yt-mealbar-promo-renderer, .ytmusic-mealbar-promo-renderer, tp-yt-paper-dialog')) {
+                    removePromoPopups();
+                } else if (node.matches && node.matches('.ytp-ad-module, .ytp-ad-player-overlay')) {
+                    skipVideoAds();
+                }
             }
         }
     }
@@ -219,15 +235,15 @@ function startObserver() {
 // -------------- Message Handling --------------
 chrome.runtime.onMessage.addListener(function (request) {
     if (_debug) console.log('Received message:', request);
-    
+
     if (request.message === 'updateObserver') {
         window.location.reload();
     } else if (request.message === 'updateAutoplay') {
         _autoplay = request.autoplay;
-        replaceYouTubePlayer();
+        // Auto-play handled by native YouTube now
     } else if (request.message === 'toggleEmbed') {
         _playerVisible = request.visible;
-        updateEmbedVisibility();
+        updatePlayerState();
     }
 });
 
@@ -236,15 +252,15 @@ document.addEventListener('keydown', function (event) {
     // Shortcut: Ctrl + B
     if (event.ctrlKey && event.code === 'KeyB') {
         _playerVisible = !_playerVisible; // Toggle visibility
-        updateEmbedVisibility();
+        updatePlayerState();
         if (_debug) console.log(`Player visibility toggled: ${_playerVisible}`);
     }
 });
 
-// -------------- Extra: “Next” Button by the Title --------------
+// -------------- Extra: "Next" Button by the Title --------------
 function addNextButtonNextToTitle() {
     const titleElement = document.querySelector("#title h1.style-scope.ytd-watch-metadata");
-    
+
     if (!titleElement) {
         if (_debug) console.log("Title element not found!");
         return;
