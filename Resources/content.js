@@ -34,10 +34,11 @@ function skipVideoAds() {
     const skipButton = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
     const adOverlay = document.querySelector('.ytp-ad-overlay-close-button');
 
-    // Click skip button if available
+    // Click skip button if available - this is the most reliable method
     if (skipButton) {
         skipButton.click();
         if (_debug) console.log('Clicked skip button');
+        return; // Exit after clicking skip button
     }
 
     // Close overlay ads
@@ -46,19 +47,47 @@ function skipVideoAds() {
         if (_debug) console.log('Closed overlay ad');
     }
 
-    // Check if ad is playing and speed it up
+    // Check if ad is playing
     const adContainer = document.querySelector('.ad-showing, .ad-interrupting');
     const adBadge = document.querySelector('.ytp-ad-badge, .ytp-ad-player-overlay');
+    const adText = document.querySelector('.ytp-ad-text');
 
-    if ((adContainer || adBadge) && video) {
-        // Mute and speed up ad
+    if ((adContainer || adBadge || adText) && video) {
+        // First try to click any available skip button (including countdown ones)
+        const allSkipButtons = document.querySelectorAll('[class*="ytp-ad-skip"], [class*="ytp-skip"], .ytp-ad-skip-button-container button');
+        for (const button of allSkipButtons) {
+            if (button && button.offsetParent !== null) { // Check if visible
+                button.click();
+                if (_debug) console.log('Clicked alternative skip button');
+                return;
+            }
+        }
+
+        // Only speed up ad if skip button not available
+        // Don't skip to end as it causes black screen
         video.muted = true;
         video.playbackRate = 16; // Maximum speed
 
-        // Try to skip to end
-        if (video.duration && !isNaN(video.duration) && isFinite(video.duration)) {
-            video.currentTime = video.duration - 0.1;
-            if (_debug) console.log('Skipped ad to end');
+        // Try to trigger play if video is paused (happens after ad interruption)
+        if (video.paused) {
+            video.play().catch(e => {
+                if (_debug) console.log('Could not play video:', e);
+            });
+        }
+
+        if (_debug) console.log('Speeding up ad, waiting for skip button');
+    } else {
+        // No ad detected, ensure video is playing normally
+        if (video && video.paused && !document.querySelector('.ytp-play-button[aria-label="Play"]')) {
+            video.play().catch(e => {
+                if (_debug) console.log('Could not resume video:', e);
+            });
+        }
+
+        // Reset playback rate if no ad
+        if (video && video.playbackRate !== 1) {
+            video.playbackRate = 1;
+            video.muted = false;
         }
     }
 }
