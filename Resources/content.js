@@ -6,6 +6,7 @@ let _isPaused = false;
 let _autoplay = false;
 let _lastUrl = null;
 let _playerVisible = true; // Default true since we don't store it
+let _userPausedVideo = false; // Track if user intentionally paused the video
 
 // Load settings
 chrome.storage.sync.get(['isPaused', 'autoplay'], function (result) {
@@ -31,64 +32,99 @@ function skipVideoAds() {
 
     // Skip video ads using YouTube's native player
     const video = document.querySelector('video.video-stream');
+    if (!video) return;
+
+    // Comprehensive ad detection
     const skipButton = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
     const adOverlay = document.querySelector('.ytp-ad-overlay-close-button');
 
+    // More comprehensive ad detection selectors
+    const adContainer = document.querySelector('.ad-showing, .ad-interrupting');
+    const adBadge = document.querySelector('.ytp-ad-badge, .ytp-ad-player-overlay');
+    const adText = document.querySelector('.ytp-ad-text');
+    const adModule = document.querySelector('.ytp-ad-module');
+    const adPreviewText = document.querySelector('.ytp-ad-preview-text');
+
+    // Check if video element has ad-related classes or if player container shows ad
+    const playerAd = document.querySelector('.html5-video-player.ad-showing, .html5-video-player.ad-interrupting');
+
+    // More strict ad detection - require multiple indicators
+    const adIndicatorCount = [adContainer, adBadge, adText, adModule, adPreviewText, playerAd].filter(Boolean).length;
+    const isAdPlaying = adIndicatorCount >= 2; // Require at least 2 indicators to confirm ad
+
+    if (_debug) console.log('Ad indicators found:', adIndicatorCount, 'Is ad playing:', isAdPlaying);
+
     // Click skip button if available - this is the most reliable method
-    if (skipButton) {
+    if (skipButton && skipButton.offsetParent !== null) {
         skipButton.click();
         if (_debug) console.log('Clicked skip button');
+        // After clicking skip, restore normal playback immediately
+        if (video.playbackRate !== 1) {
+            video.playbackRate = 1;
+        }
+        if (video.muted) {
+            video.muted = false;
+        }
         return; // Exit after clicking skip button
     }
 
     // Close overlay ads
-    if (adOverlay) {
+    if (adOverlay && adOverlay.offsetParent !== null) {
         adOverlay.click();
         if (_debug) console.log('Closed overlay ad');
     }
 
-    // Check if ad is playing
-    const adContainer = document.querySelector('.ad-showing, .ad-interrupting');
-    const adBadge = document.querySelector('.ytp-ad-badge, .ytp-ad-player-overlay');
-    const adText = document.querySelector('.ytp-ad-text');
-
-    if ((adContainer || adBadge || adText) && video) {
+    if (isAdPlaying && video) {
         // First try to click any available skip button (including countdown ones)
-        const allSkipButtons = document.querySelectorAll('[class*="ytp-ad-skip"], [class*="ytp-skip"], .ytp-ad-skip-button-container button');
+        const allSkipButtons = document.querySelectorAll('[class*="ytp-ad-skip"], [class*="ytp-skip"], .ytp-ad-skip-button-container button, .ytp-skip-ad-button');
         for (const button of allSkipButtons) {
             if (button && button.offsetParent !== null) { // Check if visible
                 button.click();
                 if (_debug) console.log('Clicked alternative skip button');
+                // Restore normal playback after clicking skip
+                if (video.playbackRate !== 1) {
+                    video.playbackRate = 1;
+                }
+                if (video.muted) {
+                    video.muted = false;
+                }
                 return;
             }
         }
 
-        // Only speed up ad if skip button not available
-        // Don't skip to end as it causes black screen
+        // Enhanced mid-roll ad skip strategy
+        // Store the current time before ad to resume properly
+        const currentTime = video.currentTime;
+
+        // For mid-roll ads that cause black screens, we need a different approach
+        // Instead of jumping to end, speed through the ad
         video.muted = true;
         video.playbackRate = 16; // Maximum speed
 
         // Try to trigger play if video is paused (happens after ad interruption)
         if (video.paused) {
             video.play().catch(e => {
-                if (_debug) console.log('Could not play video:', e);
+                if (_debug) console.log('Could not play ad video:', e);
             });
         }
 
-        if (_debug) console.log('Speeding up ad, waiting for skip button');
+        if (_debug) console.log('Ad detected - speeding through at 16x, current time:', currentTime);
     } else {
-        // No ad detected, ensure video is playing normally
-        if (video && video.paused && !document.querySelector('.ytp-play-button[aria-label="Play"]')) {
-            video.play().catch(e => {
-                if (_debug) console.log('Could not resume video:', e);
-            });
+        // No ad detected, restore normal playback settings
+        // Always restore playback rate to 1 when no ad is detected
+        if (video.playbackRate !== 1) {
+            video.playbackRate = 1;
+            if (_debug) console.log('Restored normal playback rate');
         }
 
-        // Reset playback rate if no ad
-        if (video && video.playbackRate !== 1) {
-            video.playbackRate = 1;
+        // Always unmute when no ad is detected
+        if (video.muted) {
             video.muted = false;
+            if (_debug) console.log('Unmuted video after ad');
         }
+
+        // DO NOT auto-play the video after ad skip - let user control playback
+        // The video will naturally resume if it was playing before the ad
     }
 }
 
@@ -145,9 +181,9 @@ function checkUrlChange() {
 }
 
 setInterval(checkUrlChange, 1000);
-setInterval(handleVideoAds, 500);
+setInterval(handleVideoAds, 200); // More frequent check for faster ad detection
 setInterval(removeVideoAdElements, 2000);
-setInterval(skipVideoAds, 500);
+setInterval(skipVideoAds, 200); // More frequent check for mid-roll ads
 
 // -------------- Ad Removal + Warmup --------------
 function removeAds() {
